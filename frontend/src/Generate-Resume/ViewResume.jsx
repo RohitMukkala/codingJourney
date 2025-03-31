@@ -1,4 +1,3 @@
-import Header from "@/components/custom/Header";
 import { Button } from "@/components/ui/button";
 import { ResumeInfoContext } from "@/context/ResumeInfoContext";
 import { Download, Share2 } from "lucide-react";
@@ -42,19 +41,53 @@ function ViewResume() {
 
   const handleDownload = () => {
     const printWindow = window.open("", "_blank");
+
+    // Clone the resume content
+    const printContent = document.getElementById("print-area").cloneNode(true);
+
+    // Get all styles from the main document
+    let styles = "";
+    for (const stylesheet of document.styleSheets) {
+      try {
+        for (const rule of stylesheet.cssRules) {
+          styles += rule.cssText;
+        }
+      } catch (error) {
+        console.warn("Could not access stylesheet: ", error);
+      }
+    }
+
     printWindow.document.write(`
       <html>
         <head>
-          <title>${resumeData?.firstName || "My"} Resume</title>
-          <link rel="stylesheet" href="/index.css">
+          <title></title> <!-- Blank title to avoid unwanted text -->
+          <style>
+            ${styles}
+            @page {
+              size: auto;
+              margin: 0; /* Removes browser default header/footer */
+            }
+            body {
+              margin: 0;
+              padding: 20px;
+            }
+          </style>
         </head>
         <body>
-          ${document.getElementById("print-area").innerHTML}
+          <div id="print-content">
+            ${printContent.innerHTML}
+          </div>
         </body>
       </html>
     `);
+
     printWindow.document.close();
-    printWindow.print();
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
   };
 
   const handleShare = async () => {
@@ -76,22 +109,19 @@ function ViewResume() {
 
   return (
     <div className="min-h-screen">
-      <div className="print-hidden">
-        <Header />
-        <div className="my-10 mx-4 md:mx-8 lg:mx-16 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold mb-4">
-            Your Professional Resume is Ready!
-          </h2>
-          <div className="flex flex-col md:flex-row gap-4 justify-center my-8">
-            <Button onClick={handleDownload} className="gap-2">
-              <Download className="h-4 w-4" />
-              Download PDF
-            </Button>
-            <Button variant="secondary" onClick={handleShare} className="gap-2">
-              <Share2 className="h-4 w-4" />
-              Share Resume
-            </Button>
-          </div>
+      <div className="my-10 mx-4 md:mx-8 lg:mx-16 text-center">
+        <h2 className="text-2xl md:text-3xl font-bold mb-4">
+          Your Professional Resume is Ready!
+        </h2>
+        <div className="flex flex-col md:flex-row gap-4 justify-center my-8">
+          <Button onClick={handleDownload} className="gap-2">
+            <Download className="h-4 w-4" />
+            Download PDF
+          </Button>
+          <Button variant="secondary" onClick={handleShare} className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Share Resume
+          </Button>
         </div>
       </div>
 
