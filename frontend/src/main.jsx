@@ -1,12 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import { ClerkProvider } from "@clerk/clerk-react";
 import "./index.css";
 import App from "./App.jsx";
-import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import SignInPage from "./auth/sign-in";
 import Home from "./home/index.jsx";
 import Dashboard from "./dashboard/index.jsx";
-import { ClerkProvider } from "@clerk/clerk-react";
+import GenerateResume from "./Generate-Resume";
+import CreateResume from "./Generate-Resume/CreateResume";
+import ViewResume from "./Generate-Resume/ViewResume";
+import { ResumeInfoProvider } from "@/context/ResumeInfoContext";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -17,6 +21,18 @@ const router = createBrowserRouter([
       {
         path: "/dashboard",
         element: <Dashboard />,
+      },
+      {
+        path: "/generate-resume",
+        element: <GenerateResume />,
+      },
+      {
+        path: "/create-resume",
+        element: <CreateResume />,
+      },
+      {
+        path: "/view-resume",
+        element: <ViewResume />,
       },
     ],
   },
@@ -33,7 +49,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
-      <RouterProvider router={router} />
+      <ResumeInfoProvider>
+        <RouterProvider router={router} />
+      </ResumeInfoProvider>
     </ClerkProvider>
   </StrictMode>
 );

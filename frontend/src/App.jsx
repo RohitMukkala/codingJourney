@@ -1,22 +1,37 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import "./App.css";
 import { useUser } from "@clerk/clerk-react";
 import { Navigate, Outlet } from "react-router-dom";
-import Header from "./components/custom/header";
+import Header from "@/components/custom/Header";
+import { LoaderCircle } from "lucide-react";
 
 function App() {
-  const [count, setCount] = useState(0);
-  const { user, isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn } = useUser();
 
-  if (!isSignedIn && isLoaded) {
-    return <Navigate to={"/auth/sign-in"} />;
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoaderCircle className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
   }
+
+  if (!isSignedIn) {
+    return <Navigate to="/auth/sign-in" />;
+  }
+
   return (
-    <>
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <Outlet />
-    </>
+
+      <main className="flex-1 container py-8">
+        <Outlet />
+      </main>
+
+      <footer className="border-t py-4 mt-8 print:hidden">
+        <div className="container text-center text-sm text-muted-foreground">
+          © {new Date().getFullYear()} Resume Builder. All rights reserved.
+        </div>
+      </footer>
+    </div>
   );
 }
 
