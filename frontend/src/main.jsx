@@ -11,6 +11,7 @@ import GenerateResume from "./Generate-Resume";
 import CreateResume from "./Generate-Resume/CreateResume";
 import ViewResume from "./Generate-Resume/ViewResume";
 import { ResumeInfoProvider } from "@/context/ResumeInfoContext";
+import ResumeAnalyzer from "./ResumeAnalyzer/ResumeAnalyzer";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -33,6 +34,10 @@ const router = createBrowserRouter([
       {
         path: "/view-resume",
         element: <ViewResume />,
+      },
+      {
+        path: "/analyze-resume",
+        element: <ResumeAnalyzer />,
       },
     ],
   },
