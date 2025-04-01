@@ -29,7 +29,7 @@ function Experience() {
 
   const handleRichTextChange = (index, value) => {
     const updatedExperience = [...resumeInfo.experience];
-    updatedExperience[index].workSummary = value;
+    updatedExperience[index].workSummary = value; // Store only the string
     setResumeInfo((prev) => ({ ...prev, experience: updatedExperience }));
   };
 
@@ -179,7 +179,6 @@ function Experience() {
 
               <div className="col-span-2 space-y-2">
                 <RichTextEditor
-                  index={index}
                   defaultValue={item.workSummary}
                   onRichTextEditorChange={(value) =>
                     handleRichTextChange(index, value)
@@ -204,15 +203,9 @@ function Experience() {
       </div>
 
       <div className="flex flex-col sm:flex-row justify-between gap-4 mt-6">
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={addNewExperience}
-            className="text-primary"
-          >
-            + Add Experience
-          </Button>
-        </div>
+        <Button variant="outline" onClick={addNewExperience}>
+          + Add Experience
+        </Button>
 
         <Button
           onClick={handleSave}

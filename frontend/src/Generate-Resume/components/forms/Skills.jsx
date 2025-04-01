@@ -6,15 +6,12 @@ import { LoaderCircle } from "lucide-react";
 import { ResumeInfoContext } from "@/context/ResumeInfoContext";
 import { toast } from "sonner";
 import React, { useContext, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 function Skills() {
   const { resumeInfo, setResumeInfo } = useContext(ResumeInfoContext);
-  const navigate = useNavigate();
   const [skillsList, setSkillsList] = useState([{ name: "", rating: 0 }]);
   const [loading, setLoading] = useState(false);
 
-  // Load initial data and sync with context
   useEffect(() => {
     const savedSkills = localStorage.getItem("resume_skills");
     if (savedSkills) {
@@ -28,7 +25,6 @@ function Skills() {
     }
   }, []);
 
-  // Real-time preview updates
   useEffect(() => {
     setResumeInfo((prev) => ({ ...prev, skills: skillsList }));
     localStorage.setItem("resume_skills", JSON.stringify(skillsList));
@@ -66,7 +62,6 @@ function Skills() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 300));
       toast.success("Skills saved successfully!");
-      navigate("/View-Resume"); // Fixed navigation
     } catch (error) {
       toast.error("Failed to save skills");
     } finally {
@@ -141,11 +136,7 @@ function Skills() {
           disabled={loading}
           className="min-w-[120px]"
         >
-          {loading ? (
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : (
-            "Save & Preview"
-          )}
+          {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : "Save"}
         </Button>
       </div>
     </div>

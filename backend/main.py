@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import google.generativeai as genai
 import fitz  # PyMuPDF
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 

@@ -18,7 +18,7 @@ function GenerateResume() {
 
         <div className="mt-8">
           <Button
-            onClick={() => navigate("/CreateResume")}
+            onClick={() => navigate("/Create-Resume")}
             size="lg"
             className="text-lg px-8 py-6 hover:scale-105 transition-transform"
           >

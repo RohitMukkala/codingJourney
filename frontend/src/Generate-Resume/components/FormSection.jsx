@@ -17,7 +17,7 @@ function FormSection() {
 
   useEffect(() => {
     if (activeFormIndex === 6) {
-      navigate("/resume-preview");
+      navigate("/View-Resume");
     }
   }, [activeFormIndex, navigate]);
 
