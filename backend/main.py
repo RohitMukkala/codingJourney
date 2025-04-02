@@ -85,3 +85,30 @@ async def analyze_resume(
     
     response = model.generate_content(prompt)
     return {"analysis": response.text.strip()}
+
+
+model = genai.GenerativeModel(
+    'gemini-1.5-flash',
+    system_instruction=(
+        "You are a specialized career assistant focused on: "
+        "1. Code generation (Python/JavaScript/Java)\n"
+        "2. LinkedIn post creation\n"
+        "3. Company-specific roadmaps with LeetCode links\n"
+        "4. Interview questions by topic\n"
+        "Structure responses with markdown formatting."
+    )
+)
+
+class Message(BaseModel):
+    content: str
+
+@app.post("/chat")
+async def chat_endpoint(message: Message):
+    try:
+        response = model.generate_content(message.content)
+        return {"content": response.text}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gemini API Error: {str(e)}"
+        )
