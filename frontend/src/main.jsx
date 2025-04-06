@@ -1,6 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import {
+  RouterProvider,
+  createBrowserRouter,
+  Navigate,
+} from "react-router-dom";
 import { ClerkProvider } from "@clerk/clerk-react";
 import "./index.css";
 import App from "./App.jsx";
@@ -20,6 +24,11 @@ const router = createBrowserRouter([
   {
     element: <App />,
     children: [
+      // Catch-all for authenticated routes
+      {
+        path: "*",
+        element: <Navigate to="/dashboard" replace />,
+      },
       {
         path: "/dashboard",
         element: <Dashboard />,
@@ -53,6 +62,11 @@ const router = createBrowserRouter([
   {
     path: "/auth/sign-in",
     element: <SignInPage />,
+  },
+  // Root-level catch-all
+  {
+    path: "*",
+    element: <Navigate to="/" replace />,
   },
 ]);
 
