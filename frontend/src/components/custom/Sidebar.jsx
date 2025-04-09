@@ -18,6 +18,9 @@ export default function Sidebar({ isOpen, onClose }) {
         <Link to="/chat" onClick={onClose} className="sidebar-link">
           Chat
         </Link>
+        <Link to="/settings" onClick={onClose} className="sidebar-link">
+          Settings
+        </Link>
       </nav>
     </div>
   );
