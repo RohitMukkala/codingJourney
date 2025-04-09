@@ -1,0 +1,335 @@
+import React, { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import axiosInstance from "../utils/axios";
+import { motion } from "framer-motion";
+import "./styles.css";
+
+const Settings = () => {
+  const { user, updateUser, getToken } = useAuth();
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    username: "",
+    leetcode_username: "",
+    github_username: "",
+    codechef_username: "",
+    codeforces_username: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({ general: "", usernames: {} });
+  const [success, setSuccess] = useState("");
+
+  // Validation patterns
+  const USERNAME_PATTERNS = {
+    username: /^[a-zA-Z0-9_-]{3,20}$/,
+    leetcode: /^[a-zA-Z0-9_-]{3,25}$/,
+    github: /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/,
+    codechef: /^[a-zA-Z0-9_]{3,20}$/,
+    codeforces: /^[a-zA-Z0-9_-]{3,24}$/,
+  };
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        username: user.username || "",
+        leetcode_username: user.leetcode_username || "",
+        github_username: user.github_username || "",
+        codechef_username: user.codechef_username || "",
+        codeforces_username: user.codeforces_username || "",
+      });
+    }
+  }, [user]);
+
+  const validateUsername = (platform, value) => {
+    if (!value) return true;
+    return USERNAME_PATTERNS[platform].test(value);
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleProfilePic = async (file) => {
+    if (!file) return;
+    setLoading(true);
+    setErrors((prev) => ({ ...prev, profilePic: undefined }));
+    setSuccess("");
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error("Authentication token not available.");
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/settings/profile-picture", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorDetail = "Upload failed. Please try again.";
+        try {
+          const errorData = await response.json();
+          errorDetail = errorData.detail || errorDetail;
+        } catch (jsonError) {
+          // Ignore if response is not JSON
+        }
+        throw new Error(`${response.status}: ${errorDetail}`);
+      }
+
+      const responseData = await response.json();
+
+      // Update user metadata in Clerk AND local state
+      const newMetadata = {
+        ...user.unsafeMetadata,
+        profile_picture: responseData.profile_picture,
+      };
+      await updateUser({ unsafeMetadata: newMetadata });
+
+      setSuccess("Profile picture updated!");
+    } catch (err) {
+      console.error("Profile picture upload error:", err);
+      setErrors((prev) => ({
+        ...prev,
+        profilePic: err.message || "Upload failed.",
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrors({ general: "", usernames: {} });
+    setSuccess("");
+
+    try {
+      // First, validate all usernames
+      const validationErrors = {};
+      Object.entries(formData).forEach(([key, value]) => {
+        if (
+          key !== "username" &&
+          value &&
+          !validateUsername(key.replace("_username", ""), value)
+        ) {
+          validationErrors[key] = `Invalid ${key.replace(
+            "_username",
+            ""
+          )} username format`;
+        }
+      });
+
+      if (Object.keys(validationErrors).length > 0) {
+        setErrors((prev) => ({
+          ...prev,
+          usernames: validationErrors,
+        }));
+        setLoading(false);
+        return;
+      }
+
+      // Verify we have an active session
+      const session = await window.Clerk?.session;
+      if (!session) {
+        throw new Error("No active session found");
+      }
+
+      // Get a fresh token
+      const token = await session.getToken();
+      if (!token) {
+        throw new Error("Failed to get authentication token");
+      }
+
+      // Prepare data for backend according to UserUpdate schema
+      const backendData = {
+        username: formData.username || null,
+        leetcode_username: formData.leetcode_username || null,
+        github_username: formData.github_username || null,
+        codechef_username: formData.codechef_username || null,
+        codeforces_username: formData.codeforces_username || null,
+      };
+
+      // Send data to our backend API
+      const response = await axiosInstance.put("/api/settings", backendData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.status === 200 && response.data) {
+        // Update the user data in Clerk
+        await updateUser({
+          unsafeMetadata: {
+            ...user.unsafeMetadata,
+            ...backendData,
+          },
+        });
+
+        setSuccess("Settings saved successfully!");
+
+        // Update form data with the response data
+        setFormData((prev) => ({
+          ...prev,
+          ...response.data,
+        }));
+      } else {
+        const errorMessage =
+          response.data?.detail || "Failed to update settings";
+        setErrors((prev) => ({
+          ...prev,
+          general:
+            typeof errorMessage === "string"
+              ? errorMessage
+              : "Failed to update settings",
+        }));
+      }
+    } catch (err) {
+      console.error("Error updating settings:", err);
+      let errorMessage = "Failed to update settings";
+
+      if (
+        err.message === "No active session found" ||
+        err.message === "Failed to get authentication token"
+      ) {
+        errorMessage = "Please sign in again to continue";
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 2000);
+      } else if (err.response?.status === 401) {
+        errorMessage = "Your session has expired. Please sign in again.";
+        setTimeout(async () => {
+          try {
+            await window.Clerk?.signOut();
+            window.location.href = "/login";
+          } catch (signOutError) {
+            console.error("Error during sign out:", signOutError);
+            window.location.href = "/login";
+          }
+        }, 2000);
+      } else if (err.response?.data?.detail) {
+        errorMessage =
+          typeof err.response.data.detail === "string"
+            ? err.response.data.detail
+            : "Failed to update settings";
+      }
+
+      setErrors((prev) => ({
+        ...prev,
+        general: errorMessage,
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="settings-container">
+      <div className="settings-content">
+        <div className="profile-section">
+          <div className="profile-picture-container">
+            <img
+              src={user?.profileImageUrl || "/default-avatar.png"}
+              alt="Profile"
+              className="profile-picture"
+            />
+            <label className="profile-picture-upload">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleProfilePic(e.target.files[0])}
+                className="hidden"
+              />
+              <span className="camera-icon">📷</span>
+            </label>
+          </div>
+          <div className="username">{user?.email || "User"}</div>
+        </div>
+
+        <div className="settings-form">
+          <h2>Profile Settings</h2>
+          {success && <div className="success-message">{success}</div>}
+          {errors.general && (
+            <div className="error-message">{errors.general}</div>
+          )}
+
+          <form onSubmit={handleSave}>
+            <div className="form-group">
+              <label>Username</label>
+              <input
+                name="username"
+                value={formData.username}
+                onChange={handleChange}
+                placeholder="Enter your username"
+                className={errors.usernames.username ? "invalid" : ""}
+              />
+              {errors.usernames.username && (
+                <div className="error">
+                  {typeof errors.usernames.username === "string"
+                    ? errors.usernames.username
+                    : "Invalid username format"}
+                </div>
+              )}
+            </div>
+
+            <div className="platform-section">
+              <h3>Coding Platform Usernames</h3>
+              {Object.entries(formData)
+                .filter(([key]) => key !== "username")
+                .map(([key, value]) => {
+                  const platform = key.replace("_username", "");
+                  return (
+                    <div key={key} className="form-group">
+                      <label>
+                        {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                      </label>
+                      <input
+                        name={key}
+                        value={value}
+                        onChange={handleChange}
+                        placeholder={`Enter your ${platform} username`}
+                        className={errors.usernames[platform] ? "invalid" : ""}
+                      />
+                      {errors.usernames[platform] && (
+                        <div className="error">
+                          {typeof errors.usernames[platform] === "string"
+                            ? errors.usernames[platform]
+                            : `Invalid ${platform} username format`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="button-group">
+              <button type="submit" className="save-button" disabled={loading}>
+                {loading ? "Saving..." : "Save Changes"}
+              </button>
+              <button
+                type="button"
+                className="logout-button"
+                onClick={() => window.Clerk.signOut()}
+              >
+                Logout
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Settings;

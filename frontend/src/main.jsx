@@ -17,6 +17,8 @@ import ViewResume from "./Generate-Resume/ViewResume";
 import { ResumeInfoProvider } from "@/context/ResumeInfoContext";
 import ResumeAnalyzer from "./ResumeAnalyzer/ResumeAnalyzer";
 import ChatInterface from "./ChatInterface";
+import AuthProvider from "@/context/AuthContext";
+import Settings from "./settings";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -53,6 +55,10 @@ const router = createBrowserRouter([
         path: "/chat",
         element: <ChatInterface />,
       },
+      {
+        path: "/settings",
+        element: <Settings />,
+      },
     ],
   },
   {
@@ -73,9 +79,13 @@ const router = createBrowserRouter([
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
-      <ResumeInfoProvider>
-        <RouterProvider router={router} />
-      </ResumeInfoProvider>
+      <AuthProvider>
+        {" "}
+        {/* Added wrapper */}
+        <ResumeInfoProvider>
+          <RouterProvider router={router} />
+        </ResumeInfoProvider>
+      </AuthProvider>
     </ClerkProvider>
   </StrictMode>
 );
