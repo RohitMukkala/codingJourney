@@ -5,6 +5,9 @@ import axiosInstance from "../utils/axios";
 import { motion } from "framer-motion";
 import "./styles.css";
 
+// Define API_URL using Vite's environment variable mechanism
+const API_URL = import.meta.env.VITE_API_URL;
+
 const Settings = () => {
   const { user, updateUser, getToken } = useAuth();
   const navigate = useNavigate();
@@ -18,15 +21,6 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({ general: "", usernames: {} });
   const [success, setSuccess] = useState("");
-
-  // Validation patterns
-  const USERNAME_PATTERNS = {
-    username: /^[a-zA-Z0-9_-]{3,20}$/,
-    leetcode: /^[a-zA-Z0-9_-]{3,25}$/,
-    github: /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/,
-    codechef: /^[a-zA-Z0-9_]{3,20}$/,
-    codeforces: /^[a-zA-Z0-9_-]{3,24}$/,
-  };
 
   useEffect(() => {
     if (user) {
@@ -42,6 +36,13 @@ const Settings = () => {
 
   const validateUsername = (platform, value) => {
     if (!value) return true;
+    const USERNAME_PATTERNS = {
+      username: /^[a-zA-Z0-9_-]{3,20}$/,
+      leetcode: /^[a-zA-Z0-9_-]{3,25}$/,
+      github: /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/,
+      codechef: /^[a-zA-Z0-9_]{3,20}$/,
+      codeforces: /^[a-zA-Z0-9_-]{3,24}$/,
+    };
     return USERNAME_PATTERNS[platform].test(value);
   };
 
@@ -51,61 +52,6 @@ const Settings = () => {
       ...prev,
       [name]: value,
     }));
-  };
-
-  const handleProfilePic = async (file) => {
-    if (!file) return;
-    setLoading(true);
-    setErrors((prev) => ({ ...prev, profilePic: undefined }));
-    setSuccess("");
-
-    try {
-      const token = await getToken();
-      if (!token) {
-        throw new Error("Authentication token not available.");
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/settings/profile-picture", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        let errorDetail = "Upload failed. Please try again.";
-        try {
-          const errorData = await response.json();
-          errorDetail = errorData.detail || errorDetail;
-        } catch (jsonError) {
-          // Ignore if response is not JSON
-        }
-        throw new Error(`${response.status}: ${errorDetail}`);
-      }
-
-      const responseData = await response.json();
-
-      // Update user metadata in Clerk AND local state
-      const newMetadata = {
-        ...user.unsafeMetadata,
-        profile_picture: responseData.profile_picture,
-      };
-      await updateUser({ unsafeMetadata: newMetadata });
-
-      setSuccess("Profile picture updated!");
-    } catch (err) {
-      console.error("Profile picture upload error:", err);
-      setErrors((prev) => ({
-        ...prev,
-        profilePic: err.message || "Upload failed.",
-      }));
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleSave = async (e) => {
@@ -237,26 +183,6 @@ const Settings = () => {
   return (
     <div className="settings-container">
       <div className="settings-content">
-        <div className="profile-section">
-          <div className="profile-picture-container">
-            <img
-              src={user?.profileImageUrl || "/default-avatar.png"}
-              alt="Profile"
-              className="profile-picture"
-            />
-            <label className="profile-picture-upload">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleProfilePic(e.target.files[0])}
-                className="hidden"
-              />
-              <span className="camera-icon">📷</span>
-            </label>
-          </div>
-          <div className="username">{user?.email || "User"}</div>
-        </div>
-
         <div className="settings-form">
           <h2>Profile Settings</h2>
           {success && <div className="success-message">{success}</div>}
