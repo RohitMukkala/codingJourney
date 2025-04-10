@@ -1,7 +1,11 @@
 import { useState } from "react";
 
-// Get the API URL from environment variables
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Get the API URL from the global variable, env variable, or direct fallback
+const API_URL =
+  window.API_URL ||
+  import.meta.env.VITE_API_URL ||
+  "https://codingjourney.onrender.com";
+console.log("Resume Analyzer using API URL:", API_URL); // Debug log
 
 const ResumeAnalyzer = () => {
   const [file, setFile] = useState(null);
