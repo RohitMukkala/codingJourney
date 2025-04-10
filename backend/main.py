@@ -43,11 +43,26 @@ def read_root():
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://coding-journey.vercel.app"],
+    allow_origins=["http://localhost:5173", "https://coding-journey-9rlm.vercel.app", "*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
+
+# Add logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Headers: {request.headers}")
+    try:
+        response = await call_next(request)
+        logger.info(f"Response status: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        raise
 
 # Configure Gemini
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -150,6 +165,7 @@ def get_db():
         db.close()
 
 @app.put("/api/settings", response_model=UserResponse, tags=["User Settings"])
+@app.post("/api/settings", response_model=UserResponse, tags=["User Settings"])
 async def update_settings(
     user_data: UserUpdate,
     clerk_id: str = Depends(get_current_user_clerk_id),
@@ -158,6 +174,7 @@ async def update_settings(
     """Update user settings and platform usernames"""
     try:
         logger.info(f"Updating settings for user: {clerk_id}")
+        logger.info(f"Received data: {user_data}")
 
         db_user = db.query(DBUser).filter(DBUser.clerk_id == clerk_id).first()
 

@@ -61,6 +61,23 @@ const Settings = () => {
     setSuccess("");
 
     try {
+      // Test connectivity first with a simple GET request
+      try {
+        const testResponse = await fetch(`${API_URL}`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+        });
+        console.log(
+          "Test connectivity result:",
+          testResponse.status,
+          await testResponse.text()
+        );
+      } catch (testError) {
+        console.error("Test connectivity failed:", testError);
+      }
+
       // First, validate all usernames
       const validationErrors = {};
       Object.entries(formData).forEach(([key, value]) => {
@@ -106,15 +123,52 @@ const Settings = () => {
         codeforces_username: formData.codeforces_username || null,
       };
 
-      // Send data to our backend API
-      const response = await axiosInstance.put("/api/settings", backendData, {
+      console.log("Sending settings update to:", `${API_URL}/api/settings`);
+      console.log("With data:", backendData);
+      console.log("Token length:", token ? token.length : 0);
+
+      // Try a test request with POST instead of PUT (some hosts block PUT)
+      try {
+        console.log("Testing POST request first...");
+        const testPost = await fetch(`${API_URL}/api/users/me`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        });
+        console.log("GET /api/users/me result:", testPost.status);
+      } catch (postError) {
+        console.error("GET test failed:", postError);
+      }
+
+      // Use fetch API instead of axios to debug CORS issues
+      const response = await fetch(`${API_URL}/api/settings`, {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
+        credentials: "include",
+        body: JSON.stringify(backendData),
       });
 
-      if (response.status === 200 && response.data) {
+      console.log("Settings update response status:", response.status);
+
+      const responseText = await response.text();
+      console.log("Raw response:", responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse response as JSON:", e);
+        data = { detail: responseText };
+      }
+
+      if (response.ok) {
         // Update the user data in Clerk
         await updateUser({
           unsafeMetadata: {
@@ -128,11 +182,10 @@ const Settings = () => {
         // Update form data with the response data
         setFormData((prev) => ({
           ...prev,
-          ...response.data,
+          ...data,
         }));
       } else {
-        const errorMessage =
-          response.data?.detail || "Failed to update settings";
+        const errorMessage = data?.detail || "Failed to update settings";
         setErrors((prev) => ({
           ...prev,
           general:
