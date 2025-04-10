@@ -5,8 +5,12 @@ import axiosInstance from "../utils/axios";
 import { motion } from "framer-motion";
 import "./styles.css";
 
-// Define API_URL using Vite's environment variable mechanism
-const API_URL = import.meta.env.VITE_API_URL;
+// Get the API URL from the global variable, env variable, or direct fallback
+const API_URL =
+  window.API_URL ||
+  import.meta.env.VITE_API_URL ||
+  "https://codingjourney.onrender.com";
+console.log("Settings component using API URL:", API_URL); // Debug log
 
 const Settings = () => {
   const { user, updateUser, getToken } = useAuth();

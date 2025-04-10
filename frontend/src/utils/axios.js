@@ -1,8 +1,19 @@
 import axios from "axios";
 
+// Get the API URL from the global variable, env variable, or direct fallback
+const API_URL =
+  window.API_URL ||
+  import.meta.env.VITE_API_URL ||
+  "https://codingjourney.onrender.com";
+console.log("Axios using API URL:", API_URL); // Debug log
+
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL, // Use Vite's env variables
+  baseURL: API_URL,
   withCredentials: true,
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  },
 });
 
 // Request interceptor
