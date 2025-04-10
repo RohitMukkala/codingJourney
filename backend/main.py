@@ -43,7 +43,7 @@ def read_root():
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://coding-journey.vercel.app"],
+    allow_origins=["http://localhost:5173", "https://coding-journey-9rlm.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
