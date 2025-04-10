@@ -38,11 +38,11 @@ class LeetCodeResponse(BaseModel):
 
 class GitHubResponse(BaseModel):
     totalContributions: int
-    currentStreak: int
-    longestStreak: int
-    totalStars: int
-    totalForks: int
-    languages: Dict[str, float]
+    currentStreak: Optional[int] = None
+    longestStreak: Optional[int] = None
+    totalStars: Optional[int] = None # Stars RECEIVED on owned repos
+    totalForks: Optional[int] = None # Forks on owned repos
+    languages: Dict[str, float] = {} # Changed back to non-optional Dict
 
 class CodeChefResponse(BaseModel):
     currentRating: int
@@ -59,7 +59,7 @@ class CodeforcesResponse(BaseModel):
     solvedProblems: int
 
 # Cache and retry config
-CACHE_EXPIRY = timedelta(minutes=30) # Restore original cache time
+CACHE_EXPIRY = timedelta(minutes=30) # Restore original 30-minute cache time
 API_RETRIES = 3
 API_TIMEOUT = 25.0
 
@@ -101,47 +101,59 @@ async def get_platform_stats(
         raise HTTPException(400, f"Invalid {platform} username format")
 
     try:
+        # Restore normal cache check for all platforms
         cached_profile = get_cached_profile(db, clerk_id, platform)
+        
         if cached_profile:
             logger.info(f"Using cached {platform} profile for user {clerk_id}")
-            if datetime.now(timezone.utc) - cached_profile.last_updated > CACHE_EXPIRY - timedelta(minutes=5):
-                logger.info(f"Queueing background update for {platform} profile")
-                background_tasks.add_task(
-                    safe_update_profile,
-                    clerk_id,
-                    platform,
-                    username,
-                    globals()[f"fetch_{platform}_data"]
-                )
-            try:
-                # Correctly handle capitalization for model names
-                model_name = f"{platform.capitalize()}Response"
-                platform_lower = platform.lower()
-                if platform_lower == "codechef":
-                    model_name = "CodeChefResponse"
-                elif platform_lower == "github":
-                    model_name = "GitHubResponse"
-                elif platform_lower == "leetcode":
-                    model_name = "LeetCodeResponse" # Fix capitalization
-                return validate_cached_data(cached_profile, globals()[model_name], platform)
-            except HTTPException as e:
-                if e.status_code == 503:
-                    logger.info(f"Invalid cache for {platform}, fetching fresh data.")
-                else:
-                    raise e
+            now_utc = datetime.now(timezone.utc)
+            # Check expiry
+            if now_utc - cached_profile.last_updated > CACHE_EXPIRY:
+                logger.info(f"Cached {platform} profile expired for {clerk_id}. Fetching fresh.")
+                # Set profile to None to trigger fresh fetch below
+                cached_profile = None 
+            else:
+                # Cache is valid and not expired, validate and return it
+                try:
+                    # Use the correctly capitalized model name
+                    model_name = f"{platform.capitalize()}Response"
+                    platform_lower = platform.lower()
+                    if platform_lower == "codechef":
+                        model_name = "CodeChefResponse"
+                    elif platform_lower == "github":
+                        model_name = "GitHubResponse" 
+                    elif platform_lower == "leetcode":
+                        model_name = "LeetCodeResponse"
+                    return validate_cached_data(cached_profile, globals()[model_name], platform)
+                except HTTPException as e:
+                    if e.status_code == 503: # If cache data is invalid, proceed to fetch fresh data
+                        logger.info(f"Invalid cache for {platform}, fetching fresh data.")
+                        cached_profile = None # Set profile to None to trigger fresh fetch
+                    else: # Re-raise other unexpected validation errors
+                        raise e
         
-        logger.info(f"Fetching fresh {platform} data for user {username}")
-        data = await globals()[f"fetch_{platform}_data"](username)
-        
-        logger.info(f"Queueing database update for {platform} profile")
-        background_tasks.add_task(
-            update_profile_in_db,
-            clerk_id,
-            platform,
-            username,
-            data
-        )
-        return data
+        # If cached_profile is None (either not found, expired, or invalid):
+        if cached_profile is None:
+            logger.info(f"Fetching fresh {platform} data for user {username}")
+            # Determine fetcher function dynamically
+            fetcher_func_name = f"fetch_{platform.lower()}_data"
+            if fetcher_func_name not in globals():
+                logger.error(f"Fetcher function {fetcher_func_name} not found.")
+                raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, f"Data fetching not implemented for platform '{platform}'.")
+            fetcher = globals()[fetcher_func_name]
+
+            data = await fetcher(username)
+            
+            logger.info(f"Queueing database update after fresh fetch for {platform} profile")
+            background_tasks.add_task(
+                update_profile_in_db,
+                clerk_id,
+                platform,
+                username,
+                data
+            )
+            return data
+
     except HTTPException as http_exc:
         logger.warning(f"Propagating HTTPException for {platform} user {username}: {http_exc.status_code} - {http_exc.detail}")
         raise http_exc
@@ -215,6 +227,7 @@ async def fetch_leetcode_data(username: str) -> Dict[str, Any]:
 
 def validate_cached_data(profile: CodingProfile, model: BaseModel, platform: str) -> Dict:
     """Validate cached data against the appropriate response model based on platform."""
+    logger.debug(f"[Cache Validation] Validating cached data for {platform} - {profile.clerk_id}")
     try:
         # Dynamically build data dictionary based on platform
         data = {}
@@ -230,11 +243,13 @@ def validate_cached_data(profile: CodingProfile, model: BaseModel, platform: str
                 "contributionPoints": profile.problem_categories.get("contribution_points", 0)
             }
         elif platform == "github":
+            # Log the specific value read from the DB model object
+            logger.debug(f"[Cache Validation] Reading profile.total_stars: {profile.total_stars}") 
             data = {
                 "totalContributions": profile.total_contributions,
                 "currentStreak": profile.current_streak,
                 "longestStreak": profile.longest_streak,
-                "totalStars": profile.total_stars,
+                "totalStars": profile.total_stars, # Value logged above
                 "totalForks": profile.total_forks,
                 "languages": profile.languages or {}
             }
@@ -257,7 +272,9 @@ def validate_cached_data(profile: CodingProfile, model: BaseModel, platform: str
             raise HTTPException(501, f"Cache validation not implemented for {platform}")
 
         # Validate the constructed data against the Pydantic model
+        logger.debug(f"[Cache Validation] Data before Pydantic validation: {data}")
         validated_data = model(**data)
+        logger.debug(f"[Cache Validation] Pydantic validation successful.")
         return validated_data.dict()
 
     except ValidationError as e:
@@ -416,80 +433,232 @@ def handle_http_error(e: httpx.HTTPError, platform: str, username: str):
     raise HTTPException(502, detail=f"{platform} API unavailable or returned an error.")
 
 async def fetch_github_data(username: str) -> Dict[str, Any]:
-    """Fetch GitHub user statistics"""
-    try:
-        async with httpx.AsyncClient() as client:
-            # Get user's contribution graph
-            response = await client.get(
-                f"https://api.github.com/users/{username}/events",
-                headers={
-                    "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN')}",
-                    "Accept": "application/vnd.github.v3+json"
-                }
-            )
-            response.raise_for_status()
-            events = response.json()
+    """Fetch GitHub user statistics using the GraphQL API v4"""
+    token = os.getenv('GITHUB_TOKEN')
+    if not token:
+        logger.error("GITHUB_TOKEN not found in environment variables.")
+        raise HTTPException(500, detail="Server configuration error: Missing GitHub token.")
+        
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    today = datetime.now(timezone.utc)
+    one_year_ago = today - timedelta(days=365)
+    from_date = one_year_ago.isoformat()
+    to_date = today.isoformat()
 
-            # Calculate streaks and contributions
+    # Expanded GraphQL query
+    graphql_query = {
+        "query": """
+            query($username: String!, $from: DateTime!, $to: DateTime!) {
+              user(login: $username) {
+                contributionsCollection(from: $from, to: $to) {
+                  contributionCalendar {
+                    totalContributions
+                    weeks {
+                      contributionDays {
+                        contributionCount
+                        date
+                      }
+                    }
+                  }
+                }
+                starredRepositories {
+                  totalCount
+                }
+                repositories(first: 100, ownerAffiliations: OWNER, orderBy: {field: PUSHED_AT, direction: DESC}) {
+                  totalCount
+                  nodes {
+                    stargazerCount
+                    forkCount
+                    languages(first: 5, orderBy: {field: SIZE, direction: DESC}) {
+                      edges {
+                        size
+                        node {
+                          name
+                          color
+                        }
+                      }
+                      totalSize
+                    }
+                  }
+                }
+              }
+            }
+            """,
+        "variables": {
+            "username": username,
+            "from": from_date,
+            "to": to_date
+        }
+    }
+    
+    graphql_endpoint = "https://api.github.com/graphql"
+    logger.info(f"Fetching GitHub details for {username} from {graphql_endpoint}")
+
+    try:
+        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+            response = await client.post(graphql_endpoint, headers=headers, json=graphql_query)
+            
+            # Check for GraphQL specific errors first
+            response_data = response.json()
+            if "errors" in response_data:
+                error_message = response_data["errors"][0]["message"]
+                logger.error(f"GitHub GraphQL API error for {username}: {error_message}")
+                if "Could not resolve to a User" in error_message:
+                    raise HTTPException(status_code=404, detail=f"GitHub user '{username}' not found.")
+                else:
+                    raise HTTPException(status_code=502, detail=f"GitHub GraphQL API error: {error_message}")
+
+            # Check for HTTP errors after checking GraphQL errors
+            response.raise_for_status()
+
+            user_data = response_data.get("data", {}).get("user")
+            if not user_data:
+                 logger.warning(f"No user data found in GitHub GraphQL response for {username}")
+                 raise HTTPException(status_code=404, detail=f"GitHub user '{username}' not found or data inaccessible.")
+            
+            # Extract contributions data
+            contrib_collection = user_data.get("contributionsCollection", {})
+            calendar = contrib_collection.get("contributionCalendar", {})
+            total_contributions = calendar.get("totalContributions", 0)
+            weeks = calendar.get("weeks", [])
+            logger.debug(f"Fetched {len(weeks)} weeks of contribution data.")
+            
+            # --- Calculate Streaks --- 
             current_streak = 0
             longest_streak = 0
-            total_contributions = 0
-            current_streak_count = 0
-            last_date = None
-
-            for event in events:
-                if event.get("type") in ["PushEvent", "PullRequestEvent", "IssuesEvent"]:
-                    event_date = datetime.strptime(event["created_at"], "%Y-%m-%dT%H:%M:%SZ").date()
-                    if last_date is None:
-                        last_date = event_date
-                        current_streak_count = 1
-                    elif (last_date - event_date).days == 1:
-                        current_streak_count += 1
-                        last_date = event_date
+            streak_active = False
+            last_contribution_date = None
+            
+            contribution_dates = set()
+            for week in weeks:
+                for day in week.get("contributionDays", []):
+                    if day.get("contributionCount", 0) > 0:
+                        contribution_dates.add(datetime.fromisoformat(day["date"]).date())
+            
+            if contribution_dates:
+                sorted_dates = sorted(list(contribution_dates))
+                
+                if not sorted_dates:
+                    current_streak = 0
+                    longest_streak = 0
+                else:
+                    today_date = datetime.now(timezone.utc).date()
+                    current_run = 0
+                    longest_run = 0
+                    
+                    # Check if today has contributions for current streak
+                    if today_date in contribution_dates:
+                        streak_active = True
+                    # Check if yesterday has contributions to continue potential current streak
+                    elif (today_date - timedelta(days=1)) in contribution_dates:
+                         streak_active = True # Streak continues from yesterday
                     else:
-                        current_streak = max(current_streak, current_streak_count)
-                        current_streak_count = 1
-                        last_date = event_date
-                    total_contributions += 1
+                         streak_active = False # Streak broken today/yesterday
+                    
+                    expected_date = sorted_dates[0]
+                    for date in sorted_dates:
+                        if date == expected_date:
+                            current_run += 1
+                        else:
+                            # Gap detected
+                            longest_run = max(longest_run, current_run)
+                            current_run = 1 # Start new run
+                        
+                        longest_run = max(longest_run, current_run) # Update longest run at each step
+                        expected_date = date + timedelta(days=1)
+                        
+                    longest_streak = longest_run
+                    
+                    # Determine current streak based on activity today/yesterday
+                    if streak_active:
+                         # Iterate backwards from today to find the start of the current streak
+                         current_streak_check_date = today_date if today_date in contribution_dates else today_date - timedelta(days=1)
+                         current_streak_count = 0
+                         while current_streak_check_date in contribution_dates:
+                              current_streak_count += 1
+                              current_streak_check_date -= timedelta(days=1)
+                         current_streak = current_streak_count
+                    else:
+                         current_streak = 0
+                         
+            logger.info(f"Calculated Streaks: Current={current_streak}, Longest={longest_streak}")
+            # --- End Streak Calculation ---
 
-            current_streak = max(current_streak, current_streak_count)
-            longest_streak = max(longest_streak, current_streak)
+            # Extract stars count (total starred by user, not stars received)
+            total_received_stars = 0
+            total_forks = 0
+            language_bytes = {}
+            total_language_bytes = 0
 
-            # Get repository statistics
-            repos_response = await client.get(
-                f"https://api.github.com/users/{username}/repos",
-                headers={
-                    "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN')}",
-                    "Accept": "application/vnd.github.v3+json"
-                }
-            )
-            repos_response.raise_for_status()
-            repos = repos_response.json()
+            repo_data = user_data.get("repositories", {})
+            repo_nodes = repo_data.get("nodes", [])
+            total_owned_repos = repo_data.get("totalCount", 0)
+            logger.debug(f"Fetched {len(repo_nodes)} repositories (total owned: {total_owned_repos})")
+            
+            for repo in repo_nodes:
+                total_received_stars += repo.get("stargazerCount", 0) # Sum stars received
+                total_forks += repo.get("forkCount", 0)
+                repo_langs = repo.get("languages")
+                if repo_langs:
+                    lang_edges = repo_langs.get("edges", [])
+                    for edge in lang_edges:
+                        size = edge.get("size", 0)
+                        lang_name = edge.get("node", {}).get("name")
+                        if lang_name and size > 0:
+                            # Treat Cython as Python for aggregation
+                            effective_lang_name = "Python" if lang_name == "Cython" else lang_name
+                            language_bytes[effective_lang_name] = language_bytes.get(effective_lang_name, 0) + size
+                            total_language_bytes += size # Keep total bytes accurate
 
-            total_stars = sum(repo["stargazers_count"] for repo in repos)
-            total_forks = sum(repo["forks_count"] for repo in repos)
+            # Calculate language percentages
+            languages_final = {}
+            if total_language_bytes > 0:
+                # Sort by bytes, calculate percentage, take top 5
+                sorted_langs = sorted(language_bytes.items(), key=lambda item: item[1], reverse=True)
+                logger.debug(f"Top languages by bytes: {sorted_langs}") # Log sorted languages
+                for lang, bytes_count in sorted_langs[:5]: # Limit to top 5
+                    percentage = round((bytes_count / total_language_bytes) * 100, 1)
+                    if percentage >= 0.1: # Only include languages with >= 0.1%
+                        languages_final[lang] = percentage
+                    else:
+                        logger.debug(f"Skipping language {lang} due to low percentage ({percentage}%)")
+            else:
+                 logger.debug("No language bytes found to calculate percentages.")
 
-            # Get language statistics
-            languages = {}
-            for repo in repos:
-                if repo["language"]:
-                    languages[repo["language"]] = languages.get(repo["language"], 0) + 1
-
+            logger.info(f"GitHub data calculated: Contrib={total_contributions}, StarsRecv={total_received_stars}, Forks={total_forks}")
+            logger.debug(f"GitHub Languages Calculated: {languages_final}")
+            
+            # Validate
             validated = GitHubResponse(
                 totalContributions=total_contributions,
                 currentStreak=current_streak,
                 longestStreak=longest_streak,
-                totalStars=total_stars,
+                totalStars=total_received_stars, # Use calculated stars received
                 totalForks=total_forks,
-                languages=languages
+                languages=languages_final # Use calculated languages
             )
             return validated.dict()
 
     except httpx.HTTPStatusError as e:
+        # Log response body for debugging HTTP errors during GraphQL request
+        response_text = "(Failed to get response text)"
+        try: 
+            response_text = e.response.text 
+        except Exception:
+            pass
+        logger.error(f"GitHub GraphQL HTTPStatusError for {username}: Status {e.response.status_code}, Response: {response_text}")
+        # Use generic handler for non-GraphQL specific HTTP errors
         handle_http_error(e, "GitHub", username)
+    except httpx.RequestError as e:
+        logger.error(f"Network error fetching GitHub data for {username}: {e}")
+        raise HTTPException(status_code=503, detail="Network error while contacting GitHub API.")
     except Exception as e:
-        logger.error(f"Error fetching GitHub data: {e}")
-        raise HTTPException(500, "Failed to fetch GitHub data")
+        logger.error(f"Unexpected error fetching GitHub data for {username}: {e}", exc_info=True)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Failed to process GitHub data due to an internal error.")
 
 async def fetch_codechef_data(username: str) -> Dict[str, Any]:
     """Fetch CodeChef user statistics using the unofficial Vercel API"""

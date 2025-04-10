@@ -297,6 +297,20 @@ async def health_check(db: Session = Depends(get_db)):
             detail=f"Database connection failed: {str(e)}"
         )
 
+# NEW Endpoint to get current user data from DB
+@app.get("/api/users/me", response_model=UserResponse, tags=["Users"])
+async def get_current_db_user(
+    clerk_id: str = Depends(get_current_user_clerk_id),
+    db: Session = Depends(get_db)
+):
+    """Fetch the current user's data stored in the application database."""
+    db_user = db.query(DBUser).filter(DBUser.clerk_id == clerk_id).first()
+    if not db_user:
+        # Optionally create user if not found, or just return 404
+        logger.warning(f"User record not found in DB for clerk_id: {clerk_id}. Consider syncing.")
+        raise HTTPException(status_code=404, detail="User data not found in database.")
+    return db_user # Automatically serialized by UserResponse
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

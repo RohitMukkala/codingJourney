@@ -57,6 +57,12 @@ const ProgressBar = ({ label, solved, total, color }) => {
 };
 
 const PlatformCard = ({ platform, data, username }) => {
+  // Log received props on every render
+  console.log(
+    `PlatformCard Render - Platform: ${platform}, Username: ${username}, Data:`,
+    data
+  );
+
   const navigate = useNavigate();
 
   // Centralized configuration

@@ -66,8 +66,8 @@ def create_db_engine():
         # Test connection
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            logger.info("Database connection successful")
-        
+        logger.info("Database connection successful")
+            
         return engine
     except OperationalError as e:
         logger.error(f"Database connection failed: {e}")
@@ -121,7 +121,7 @@ def check_db_health() -> Optional[bool]:
             result = session.execute(text("SELECT 1"))
             if result.scalar() == 1:
                 logger.info("Database health check passed")
-                return True
+            return True
             logger.warning("Database health check returned unexpected result")
             return False
     except OperationalError as e:
