@@ -1,5 +1,8 @@
 import { useState } from "react";
 
+// Get the API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 const ResumeAnalyzer = () => {
   const [file, setFile] = useState(null);
   const [jobDescription, setJobDescription] = useState("");
@@ -20,7 +23,7 @@ const ResumeAnalyzer = () => {
       formData.append("resume", file);
       formData.append("job_description", jobDescription);
 
-      const response = await fetch("http://localhost:8000/analyze", {
+      const response = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         body: formData,
       });

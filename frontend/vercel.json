@@ -1,3 +1,12 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "framework": "vite",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "regions": ["sin1"],
+  "env": {
+    "VITE_API_URL": "https://codingjourney.onrender.com"
+  }
 }

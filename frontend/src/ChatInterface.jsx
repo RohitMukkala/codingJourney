@@ -1,6 +1,9 @@
 import { useState } from "react";
 import Message from "./Message";
 
+// Get the API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 export default function ChatInterface() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -16,7 +19,7 @@ export default function ChatInterface() {
 
     try {
       // Get bot response
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: input }),
