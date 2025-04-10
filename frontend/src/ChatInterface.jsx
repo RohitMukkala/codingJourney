@@ -1,17 +1,14 @@
 import { useState } from "react";
 import Message from "./Message";
-
-// Get the API URL from the global variable, env variable, or direct fallback
-const API_URL =
-  window.API_URL ||
-  import.meta.env.VITE_API_URL ||
-  "https://codingjourney.onrender.com";
-console.log("Using API URL:", API_URL); // Debug log to see what URL is being used
+import { apiUrl, isDevelopment } from "./config";
+import { useAuth } from "./context/AuthContext";
 
 export default function ChatInterface() {
+  const { getToken } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -20,21 +17,40 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, { content: input, isBot: false }]);
     setInput("");
     setIsLoading(true);
+    setError(null);
 
     try {
+      // Get auth token (if user is signed in)
+      let headers = { "Content-Type": "application/json" };
+      try {
+        const token = await getToken();
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (e) {
+        // Continue without token if not available
+        if (isDevelopment) {
+          console.log("No auth token available for chat, continuing as guest");
+        }
+      }
+
       // Get bot response
-      const response = await fetch(`${API_URL}/chat`, {
+      const response = await fetch(apiUrl("/chat"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ content: input }),
       });
 
-      if (!response.ok) throw new Error("Server error");
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(errorData || `Server error: ${response.status}`);
+      }
 
       const data = await response.json();
       setMessages((prev) => [...prev, { content: data.content, isBot: true }]);
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Chat error:", error);
+      setError(error.message);
       setMessages((prev) => [
         ...prev,
         {

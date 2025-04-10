@@ -7,9 +7,7 @@ import React, {
 } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import axiosInstance from "../utils/axios";
-
-// Define API_URL for backend requests
-const API_URL = import.meta.env.VITE_API_URL;
+import { API_URL, TIMEOUT, isDevelopment, apiUrl } from "../config";
 
 // 1. Create context outside the provider
 const AuthContext = createContext();
@@ -20,27 +18,67 @@ const AuthProvider = ({ children }) => {
   const { getToken } = useClerkAuth();
   const [backendUser, setBackendUser] = useState(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [backendError, setBackendError] = useState(null);
 
   // Function to fetch user data from our backend
   const fetchBackendUser = useCallback(async () => {
     if (!isSignedIn) {
       setBackendUser(null);
       setIsLoadingUser(false);
+      setBackendError(null);
       return;
     }
+
     setIsLoadingUser(true);
+    setBackendError(null);
+
     try {
+      console.log("Attempting to fetch user data from backend...");
       const token = await getToken();
       if (!token) throw new Error("No token");
-      // Assumes backend endpoint /api/users/me exists and returns user data
-      const response = await axiosInstance.get(`/api/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+
+      console.log("Making request to:", apiUrl("/api/users/me"));
+
+      // Using axios instance with our centralized config
+      const response = await axiosInstance.get("/api/users/me", {
+        timeout: TIMEOUT.long, // Use longer timeout for user data
       });
+
       setBackendUser(response.data);
       console.log("Fetched backend user:", response.data);
     } catch (error) {
       console.error("Failed to fetch backend user:", error);
-      setBackendUser(null); // Clear on error
+
+      // Set appropriate error message based on error type
+      if (error.code === "ECONNABORTED") {
+        setBackendError(
+          "Connection timeout. Please check if the backend server is running."
+        );
+      } else if (error.response) {
+        // Server responded with error status
+        if (error.response.status === 404) {
+          setBackendError(
+            "User not found in database. Please complete your profile setup."
+          );
+        } else if (error.response.status === 401) {
+          setBackendError("Authentication failed. Please sign in again.");
+        } else {
+          setBackendError(
+            `Server error: ${error.response.data?.detail || error.message}`
+          );
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        setBackendError(
+          isDevelopment
+            ? `Network error. Is the backend server running at ${API_URL}?`
+            : "Network error. Please check your connection or try again later."
+        );
+      } else {
+        setBackendError(`Error: ${error.message}`);
+      }
+
+      setBackendUser(null);
     } finally {
       setIsLoadingUser(false);
     }
@@ -90,6 +128,7 @@ const AuthProvider = ({ children }) => {
     isAuthenticated: isSignedIn,
     user: combinedUser,
     isLoading: isLoadingUser || !isLoaded, // Overall loading state
+    backendError, // Expose backend error state
     getToken,
     refreshUser, // Expose refresh function
     updateUser: async (data) => {
@@ -100,7 +139,7 @@ const AuthProvider = ({ children }) => {
         };
         await clerkUser.update(updateData);
         // Optionally trigger a refresh AFTER Clerk update if metadata affects backend state
-        // refreshUser();
+        refreshUser();
       } catch (error) {
         console.error("Error updating Clerk user:", error);
         throw error;
@@ -110,6 +149,7 @@ const AuthProvider = ({ children }) => {
       try {
         await window.Clerk.signOut();
         setBackendUser(null); // Clear local state on logout
+        setBackendError(null); // Clear any errors on logout
       } catch (error) {
         console.error("Logout error:", error);
       }

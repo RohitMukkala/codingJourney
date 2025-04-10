@@ -1,44 +1,78 @@
 import { useState } from "react";
-
-// Get the API URL from the global variable, env variable, or direct fallback
-const API_URL =
-  window.API_URL ||
-  import.meta.env.VITE_API_URL ||
-  "https://codingjourney.onrender.com";
-console.log("Resume Analyzer using API URL:", API_URL); // Debug log
+import { apiUrl, TIMEOUT } from "../config";
+import { useAuth } from "../context/AuthContext";
 
 const ResumeAnalyzer = () => {
+  const { getToken } = useAuth();
   const [file, setFile] = useState(null);
   const [jobDescription, setJobDescription] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleFileUpload = async (e) => {
     const uploadedFile = e.target.files[0];
     if (uploadedFile?.type === "application/pdf") {
       setFile(uploadedFile);
+      setError(null);
+    } else if (uploadedFile) {
+      setError("Please upload a PDF file");
     }
   };
 
   const analyzeResume = async () => {
+    if (!file) {
+      setError("Please upload a resume first");
+      return;
+    }
+
     setLoading(true);
+    setError(null);
+
     try {
       const formData = new FormData();
       formData.append("resume", file);
       formData.append("job_description", jobDescription);
 
-      const response = await fetch(`${API_URL}/analyze`, {
+      // Get auth token if available
+      let headers = {};
+      try {
+        const token = await getToken();
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (e) {
+        console.log("No auth token available for resume analyzer");
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT.long);
+
+      const response = await fetch(apiUrl("/analyze"), {
         method: "POST",
+        headers,
         body: formData,
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error("Analysis failed");
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Error: ${response.status}`);
+      }
 
       const result = await response.json();
       setAnalysis(result.analysis);
     } catch (error) {
-      console.error("Error:", error);
-      setAnalysis("Error analyzing resume. Please try again.");
+      console.error("Resume analysis error:", error);
+      if (error.name === "AbortError") {
+        setError(
+          "Request timed out. The server might be busy processing your resume."
+        );
+      } else {
+        setError(error.message || "Error analyzing resume. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -89,6 +123,13 @@ const ResumeAnalyzer = () => {
         <div className="mt-8 p-6 bg-muted rounded-md">
           <h2 className="text-xl font-semibold mb-4">Analysis Results</h2>
           <div className="whitespace-pre-wrap">{analysis}</div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-8 p-6 bg-red-100 rounded-md">
+          <h2 className="text-xl font-semibold mb-4">Error</h2>
+          <div className="whitespace-pre-wrap">{error}</div>
         </div>
       )}
     </div>

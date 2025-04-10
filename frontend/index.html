@@ -4,10 +4,30 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/three.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+    <title>Coding Journey</title>
     <script>
-      // Global API URL definition
-      window.API_URL = "https://codingjourney.onrender.com";
+      // Smart environment-based API URL detection
+      (function () {
+        // Check if we're in development mode (localhost or 127.0.0.1)
+        const isDev =
+          window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1";
+
+        // Set default API URL based on environment
+        if (isDev) {
+          // For local development, use localhost:8000
+          window.API_URL = "http://localhost:8000";
+        } else if (window.location.hostname.includes("vercel.app")) {
+          // In production on Vercel, use the Render backend
+          window.API_URL = "https://codingjourney.onrender.com";
+        }
+
+        // Log the detected environment
+        console.log(
+          `Environment detected: ${isDev ? "Development" : "Production"}`
+        );
+        console.log(`API_URL set to: ${window.API_URL}`);
+      })();
     </script>
   </head>
   <body>

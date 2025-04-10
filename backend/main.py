@@ -41,15 +41,22 @@ def read_root():
     return {"message": "Hello from FastAPI on Render!"}
 
 # CORS Configuration
+allowed_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,https://coding-journey-9rlm.vercel.app").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://coding-journey-9rlm.vercel.app"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
     expose_headers=["Content-Type", "Authorization"],
     max_age=3600,
 )
+
+# Log startup information
+environment = os.getenv("ENVIRONMENT", "development")
+logger.info(f"Starting server in {environment.upper()} mode")
+logger.info(f"Allowed origins: {allowed_origins}")
+logger.info(f"Database: {os.getenv('DATABASE_URL', 'sqlite:///./test.db').split('@')[0]}...") # Show only the first part for security
 
 # Add logging middleware
 @app.middleware("http")
@@ -305,8 +312,21 @@ async def health_check(db: Session = Depends(get_db)):
     try:
         # Test database connection
         db.execute(text("SELECT 1"))
-        logger.info("Database health check passed")
-        return {"status": "healthy", "database": "connected"}
+        
+        # Check if Gemini API is configured
+        gemini_api_key = os.getenv("GOOGLE_API_KEY")
+        gemini_status = "configured" if gemini_api_key else "missing"
+        
+        # Return detailed status
+        logger.info("Health check passed")
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "gemini_api": gemini_status,
+            "timestamp": datetime.now().isoformat(),
+            "environment": os.getenv("ENVIRONMENT", "development"),
+            "version": "1.0.0"
+        }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axiosInstance from "../utils/axios";
 import { motion } from "framer-motion";
 import "./styles.css";
+import { apiUrl } from "../config";
 
 // Get the API URL from the global variable, env variable, or direct fallback
 const API_URL =
@@ -13,7 +14,7 @@ const API_URL =
 console.log("Settings component using API URL:", API_URL); // Debug log
 
 const Settings = () => {
-  const { user, updateUser, getToken } = useAuth();
+  const { user, updateUser, getToken, backendError: authError } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: "",
@@ -37,6 +38,16 @@ const Settings = () => {
       });
     }
   }, [user]);
+
+  // Show auth error in the settings form if present
+  useEffect(() => {
+    if (authError) {
+      setErrors((prev) => ({
+        ...prev,
+        general: authError,
+      }));
+    }
+  }, [authError]);
 
   const validateUsername = (platform, value) => {
     if (!value) return true;
@@ -65,23 +76,6 @@ const Settings = () => {
     setSuccess("");
 
     try {
-      // Test connectivity first with a simple GET request
-      try {
-        const testResponse = await fetch(`${API_URL}`, {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-        });
-        console.log(
-          "Test connectivity result:",
-          testResponse.status,
-          await testResponse.text()
-        );
-      } catch (testError) {
-        console.error("Test connectivity failed:", testError);
-      }
-
       // First, validate all usernames
       const validationErrors = {};
       Object.entries(formData).forEach(([key, value]) => {
@@ -106,18 +100,6 @@ const Settings = () => {
         return;
       }
 
-      // Verify we have an active session
-      const session = await window.Clerk?.session;
-      if (!session) {
-        throw new Error("No active session found");
-      }
-
-      // Get a fresh token
-      const token = await session.getToken();
-      if (!token) {
-        throw new Error("Failed to get authentication token");
-      }
-
       // Prepare data for backend according to UserUpdate schema
       const backendData = {
         username: formData.username || null,
@@ -127,54 +109,15 @@ const Settings = () => {
         codeforces_username: formData.codeforces_username || null,
       };
 
-      console.log("Sending settings update to:", `${API_URL}/api/settings`);
-      console.log("With data:", backendData);
-      console.log("Token length:", token ? token.length : 0);
+      // Use axios instance for the request
+      const response = await axiosInstance.put("/api/settings", backendData);
 
-      // Try a test request with POST instead of PUT (some hosts block PUT)
-      try {
-        console.log("Testing POST request first...");
-        const testPost = await fetch(`${API_URL}/api/users/me`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-        console.log("GET /api/users/me result:", testPost.status);
-      } catch (postError) {
-        console.error("GET test failed:", postError);
-      }
-
-      // Use fetch API instead of axios to debug CORS issues
-      const response = await fetch(`${API_URL}/api/settings`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(backendData),
-      });
-
-      console.log("Settings update response status:", response.status);
-
-      const responseText = await response.text();
-      console.log("Raw response:", responseText);
-
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error("Failed to parse response as JSON:", e);
-        data = { detail: responseText };
-      }
-
-      if (response.ok) {
+      // Successfully updated
+      if (response.status === 200 && response.data) {
         // Update the user data in Clerk
         await updateUser({
           unsafeMetadata: {
-            ...user.unsafeMetadata,
+            ...user?.unsafeMetadata,
             ...backendData,
           },
         });
@@ -184,46 +127,20 @@ const Settings = () => {
         // Update form data with the response data
         setFormData((prev) => ({
           ...prev,
-          ...data,
-        }));
-      } else {
-        const errorMessage = data?.detail || "Failed to update settings";
-        setErrors((prev) => ({
-          ...prev,
-          general:
-            typeof errorMessage === "string"
-              ? errorMessage
-              : "Failed to update settings",
+          ...response.data,
         }));
       }
     } catch (err) {
       console.error("Error updating settings:", err);
       let errorMessage = "Failed to update settings";
 
-      if (
-        err.message === "No active session found" ||
-        err.message === "Failed to get authentication token"
-      ) {
-        errorMessage = "Please sign in again to continue";
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 2000);
-      } else if (err.response?.status === 401) {
-        errorMessage = "Your session has expired. Please sign in again.";
-        setTimeout(async () => {
-          try {
-            await window.Clerk?.signOut();
-            window.location.href = "/login";
-          } catch (signOutError) {
-            console.error("Error during sign out:", signOutError);
-            window.location.href = "/login";
-          }
-        }, 2000);
-      } else if (err.response?.data?.detail) {
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err.code === "ECONNABORTED") {
+        errorMessage = "Request timed out. Please try again.";
+      } else if (!navigator.onLine) {
         errorMessage =
-          typeof err.response.data.detail === "string"
-            ? err.response.data.detail
-            : "Failed to update settings";
+          "You appear to be offline. Please check your internet connection.";
       }
 
       setErrors((prev) => ({

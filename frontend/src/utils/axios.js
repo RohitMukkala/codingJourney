@@ -1,21 +1,18 @@
 import axios from "axios";
+import { API_URL, TIMEOUT, isDevelopment } from "../config";
 
-// Get the API URL from the global variable, env variable, or direct fallback
-const API_URL =
-  window.API_URL ||
-  import.meta.env.VITE_API_URL ||
-  "https://codingjourney.onrender.com";
-console.log("Axios using API URL:", API_URL); // Debug log
+console.log(
+  `Axios initialized with: ${API_URL}, timeout: ${TIMEOUT.default}ms`
+);
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
-  withCredentials: true,
+  withCredentials: false,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
-  // Add timeout to prevent hanging requests
-  timeout: 10000,
+  timeout: TIMEOUT.default,
 });
 
 // Request interceptor
@@ -31,7 +28,13 @@ axiosInstance.interceptors.request.use(
           config.headers.Authorization = `Bearer ${token}`;
         }
       }
-      console.log(`Request: ${config.method?.toUpperCase()} ${config.url}`);
+
+      if (isDevelopment) {
+        console.log(
+          `API Request: ${config.method?.toUpperCase()} ${config.url}`
+        );
+      }
+
       return config;
     } catch (error) {
       console.error("Error in request interceptor:", error);
@@ -46,12 +49,34 @@ axiosInstance.interceptors.request.use(
 
 // Response interceptor
 axiosInstance.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      console.warn("Authentication error:", error);
-      // Don't redirect here, let the component handle it
+  (response) => {
+    if (isDevelopment) {
+      console.log(
+        `API Response: ${response.status} for ${response.config.url}`
+      );
     }
+    return response;
+  },
+  async (error) => {
+    // Enhanced error logging
+    if (error.response) {
+      console.error(
+        `API Error ${error.response.status}: ${
+          error.response.data?.detail || error.message
+        }`
+      );
+    } else if (error.request) {
+      if (error.code === "ECONNABORTED") {
+        console.error(
+          `Request timeout (${TIMEOUT.default}ms) - Server might be slow or unreachable`
+        );
+      } else {
+        console.error(`Network Error: ${error.message} - Server might be down`);
+      }
+    } else {
+      console.error(`Request Error: ${error.message}`);
+    }
+
     return Promise.reject(error);
   }
 );
