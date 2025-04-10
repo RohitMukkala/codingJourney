@@ -14,27 +14,35 @@ const axiosInstance = axios.create({
     "Content-Type": "application/json",
     Accept: "application/json",
   },
+  // Add timeout to prevent hanging requests
+  timeout: 10000,
 });
 
 // Request interceptor
-axiosInstance.interceptors.request.use(async (config) => {
-  try {
-    // Get the current session
-    const session = await window.Clerk?.session;
-    if (session) {
-      // Get a fresh token for this request
-      const token = await session.getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-        config.headers["Content-Type"] = "application/json";
+axiosInstance.interceptors.request.use(
+  async (config) => {
+    try {
+      // Get the current session
+      const session = await window.Clerk?.session;
+      if (session) {
+        // Get a fresh token for this request
+        const token = await session.getToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
+      console.log(`Request: ${config.method?.toUpperCase()} ${config.url}`);
+      return config;
+    } catch (error) {
+      console.error("Error in request interceptor:", error);
+      return config;
     }
-    return config;
-  } catch (error) {
-    console.error("Error in request interceptor:", error);
-    return config;
+  },
+  (error) => {
+    console.error("Request interceptor error:", error);
+    return Promise.reject(error);
   }
-});
+);
 
 // Response interceptor
 axiosInstance.interceptors.response.use(

@@ -140,7 +140,6 @@ const Settings = () => {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          credentials: "include",
         });
         console.log("GET /api/users/me result:", testPost.status);
       } catch (postError) {
@@ -155,7 +154,6 @@ const Settings = () => {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        credentials: "include",
         body: JSON.stringify(backendData),
       });
 

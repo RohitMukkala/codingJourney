@@ -43,11 +43,11 @@ def read_root():
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://coding-journey-9rlm.vercel.app", "*"],
+    allow_origins=["http://localhost:5173", "https://coding-journey-9rlm.vercel.app"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+    expose_headers=["Content-Type", "Authorization"],
     max_age=3600,
 )
 
