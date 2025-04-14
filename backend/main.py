@@ -8,6 +8,7 @@ import fitz
 from dotenv import load_dotenv
 from typing import Optional
 from datetime import datetime
+import re
 
 from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -139,24 +140,240 @@ async def analyze_resume(
 model = genai.GenerativeModel(
     'gemini-1.5-flash',
     system_instruction=(
-        "You are a specialized career assistant focused on: "
-        "1. Code generation (Python/JavaScript/Java)\n"
-        "2. LinkedIn post creation\n"
-        "3. Company-specific roadmaps with LeetCode links\n"
-        "4. Interview questions by topic\n"
-        "Structure responses with markdown formatting."
+        "You are a personalized coding career assistant that provides tailored recommendations based on user data. "
+        "You'll receive information about the user's coding profiles (LeetCode, GitHub, CodeChef, Codeforces) and "
+        "their stats whenever available. Use this information to personalize your responses for:\n\n"
+        "1. Code generation in languages the user is familiar with\n"
+        "2. Career advice and learning paths tailored to their experience level\n"
+        "3. Practice problems that match their current skill level\n"
+        "4. Project ideas that build on their strengths\n\n"
+        "IMPORTANT FORMATTING GUIDELINES:\n\n"
+        "- Always address the user by their username in a conversational tone\n"
+        "- Use clear section titles followed by TWO line breaks\n"
+        "- Present information in concise paragraphs with THREE line breaks between sections\n"
+        "- For lists, use clear numbered format with each item on its own line and TWO line breaks between items\n"
+        "- When recommending resources, include specific details for easy access:\n"
+        "  * For LeetCode questions: Include full problem name AND problem number (e.g., 'Two Sum - Problem 1')\n"
+        "  * For courses/tutorials: Include full course name AND platform/provider (e.g., 'Advanced Python - Coursera')\n"
+        "  * For concepts: Include specific search terms (e.g., 'Python asyncio programming - official documentation')\n"
+        "- Ensure EXTRA spacing between different sections and ideas\n"
+        "- Use bullet points (•) for unordered lists with TWO line breaks between items\n"
+        "- Keep content well-structured with ample white space"
     )
 )
 
 class Message(BaseModel):
     content: str
 
+def format_ai_response(response_text):
+    """
+    Format the AI response by removing markdown symbols and making the text 
+    more reader-friendly while preserving structure and adding appropriate spacing.
+    Convert links to plain text references.
+    """
+    # Convert markdown links to plain text references
+    def link_to_text(match):
+        link_text = match.group(1)
+        link_url = match.group(2)
+        
+        # For LeetCode problems, extract problem name and number
+        if 'leetcode.com/problems' in link_url:
+            problem_slug = link_url.split('/')[-2]
+            return f"{link_text} (LeetCode: {problem_slug})"
+        
+        # For GitHub repos
+        elif 'github.com' in link_url:
+            return f"{link_text} (GitHub)"
+        
+        # For other URLs, just keep the text without the URL
+        else:
+            return f"{link_text}"
+    
+    # Replace links with text-only versions
+    processed_text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', link_to_text, response_text)
+    
+    # Replace headings with capitalized versions and add spacing
+    def heading_replacer(match):
+        level = len(match.group(1))
+        title = match.group(2).strip().upper() if level <= 2 else match.group(2).strip()
+        # Add extra newline before headings
+        return f"\n\n\n{title}\n\n"
+    
+    formatted_text = re.sub(r'^(#{1,6})\s+(.*?)$', heading_replacer, processed_text, flags=re.MULTILINE)
+    
+    # Remove bullet points (* or -) at the start of lines while preserving indentation
+    formatted_text = re.sub(r'^(\s*)(\*|-)\s+', r'\1• ', formatted_text, flags=re.MULTILINE)
+    
+    # Remove bold/italic markers (**, *) around words
+    formatted_text = re.sub(r'(\*{1,2})([^*]+?)(\*{1,2})', r'\2', formatted_text)
+    
+    # Convert numbered list items to clean format while preserving numbers and adding space before items
+    def list_item_replacer(match):
+        indent = match.group(1)
+        number = match.group(2)
+        return f"\n\n{indent}{number}. "
+    
+    formatted_text = re.sub(r'^(\s*)(\d+)\.\s+', list_item_replacer, formatted_text, flags=re.MULTILINE)
+    
+    # Remove backticks for inline code (except for code blocks)
+    formatted_text = re.sub(r'(?<!`)`([^`]+?)`(?!`)', r'\1', formatted_text)
+    
+    # Remove underscores used for emphasis
+    formatted_text = re.sub(r'_(.*?)_', r'\1', formatted_text)
+    
+    # Add spacing after bullet points for better readability
+    formatted_text = re.sub(r'^([\s]*)(•)(\s*)', r'\n\n\1\2 ', formatted_text, flags=re.MULTILINE)
+    
+    # Add spacing between paragraphs (sentences that end with period and are followed by a new sentence)
+    formatted_text = re.sub(r'(\.\s)([A-Z])', r'.\n\n\2', formatted_text)
+    
+    # Convert multiple newlines to just two (create paragraphs)
+    formatted_text = re.sub(r'\n{4,}', '\n\n\n', formatted_text)
+    
+    # Remove trailing whitespace in each line
+    formatted_text = re.sub(r'\s+$', '', formatted_text, flags=re.MULTILINE)
+    
+    # Add extra spacing around code blocks
+    formatted_text = re.sub(r'(```[^`]*```)', r'\n\n\1\n\n', formatted_text)
+    
+    # Ensure each list item is followed by extra newlines
+    formatted_text = re.sub(r'(\d+\.\s.*?)(\n)(\d+\.)', r'\1\n\n\n\3', formatted_text)
+    
+    # Ensure there's extra spacing after colons in section titles
+    formatted_text = re.sub(r'([A-Z][A-Z\s]+):', r'\1:\n\n', formatted_text)
+    
+    # Clean up excessive newlines
+    formatted_text = re.sub(r'\n{5,}', '\n\n\n\n', formatted_text)
+    
+    # Ensure the text starts without leading newlines
+    formatted_text = formatted_text.lstrip('\n')
+    
+    # Add extra spacing between bullet points
+    formatted_text = re.sub(r'(•.*?)(\n)(•)', r'\1\n\n\3', formatted_text)
+    
+    return formatted_text
+
 @app.post("/chat")
-async def chat_endpoint(message: Message):
+async def chat_endpoint(
+    message: Message,
+    clerk_id: str = Depends(get_current_user_clerk_id),
+    db: Session = Depends(get_db)
+):
     try:
-        response = model.generate_content(message.content)
-        return {"content": response.text}
+        # Fetch user data from database
+        db_user = db.query(DBUser).filter(DBUser.clerk_id == clerk_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user's platform usernames and other relevant data
+        user_data = {
+            "username": db_user.username or "user",
+            "leetcode_username": db_user.leetcode_username,
+            "github_username": db_user.github_username,
+            "codechef_username": db_user.codechef_username,
+            "codeforces_username": db_user.codeforces_username,
+        }
+        
+        # Get user's coding profiles for more detailed data
+        if hasattr(db_user, 'coding_profiles') and db_user.coding_profiles:
+            platform_stats = {}
+            for profile in db_user.coding_profiles:
+                if profile.platform == "leetcode":
+                    platform_stats["leetcode"] = {
+                        "total_solved": profile.total_problems_solved,
+                        "easy_solved": profile.easy_solved,
+                        "medium_solved": profile.medium_solved,
+                        "hard_solved": profile.hard_solved
+                    }
+                elif profile.platform == "github":
+                    platform_stats["github"] = {
+                        "total_contributions": profile.total_contributions,
+                        "languages": profile.languages
+                    }
+                elif profile.platform == "codechef":
+                    platform_stats["codechef"] = {
+                        "rating": profile.current_rating,
+                        "stars": profile.stars
+                    }
+                elif profile.platform == "codeforces":
+                    platform_stats["codeforces"] = {
+                        "rating": profile.codeforces_rating,
+                        "problems_solved": profile.problems_solved_count
+                    }
+            user_data["platform_stats"] = platform_stats
+        
+        # Build personalized prompt
+        personalized_context = f"""
+        I'm helping {user_data['username']} with their coding journey. Here's what I know about them:
+        """
+        
+        if user_data.get("leetcode_username"):
+            personalized_context += f"\n- LeetCode: {user_data['leetcode_username']}"
+            if "platform_stats" in user_data and "leetcode" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["leetcode"]
+                personalized_context += f" (Solved: {stats.get('total_solved', 'N/A')} problems)"
+        
+        if user_data.get("github_username"):
+            personalized_context += f"\n- GitHub: {user_data['github_username']}"
+            if "platform_stats" in user_data and "github" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["github"]
+                personalized_context += f" (Contributions: {stats.get('total_contributions', 'N/A')})"
+                if stats.get("languages"):
+                    top_languages = ", ".join([f"{lang}" for lang, _ in list(stats.get("languages", {}).items())[:3]])
+                    personalized_context += f"\n  Top languages: {top_languages}"
+        
+        if user_data.get("codechef_username"):
+            personalized_context += f"\n- CodeChef: {user_data['codechef_username']}"
+            if "platform_stats" in user_data and "codechef" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["codechef"]
+                personalized_context += f" (Rating: {stats.get('rating', 'N/A')}, Stars: {stats.get('stars', 'N/A')})"
+        
+        if user_data.get("codeforces_username"):
+            personalized_context += f"\n- Codeforces: {user_data['codeforces_username']}"
+            if "platform_stats" in user_data and "codeforces" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["codeforces"]
+                personalized_context += f" (Rating: {stats.get('rating', 'N/A')})"
+        
+        personalized_context += f"""
+        
+        
+        I'll provide a well-structured, personalized response to {user_data['username']}'s query below.
+        
+        
+        IMPORTANT FORMATTING:
+        
+        - I'll use clear section titles with TWO line breaks after each
+        
+        - I'll ensure THREE line breaks between sections and paragraphs
+        
+        - For any lists, I'll put each item on its own line with TWO line breaks between items
+        
+        - When recommending resources, I'll include specific details for easy access:
+          * For LeetCode questions: Full problem name AND problem number (e.g., "Two Sum - Problem 1")
+          * For courses/tutorials: Full course name AND platform/provider (e.g., "Advanced Python - Coursera")
+          * For concepts: Specific search terms (e.g., "Python asyncio programming - official documentation")
+        
+        - I'll use bullet points (•) for unordered lists with proper spacing
+        
+        - I'll be conversational and friendly, addressing them by name
+        
+        - I'll maintain ample white space throughout the entire response
+        """
+        
+        # Combine personalized context with user query
+        enhanced_prompt = f"{personalized_context}\n\nQuery: {message.content}"
+        
+        logger.info(f"Enhanced prompt with user data for {user_data['username']}")
+        response = model.generate_content(enhanced_prompt)
+        
+        # Format the response to remove markdown symbols at the beginning of lines
+        formatted_response = format_ai_response(response.text)
+        
+        return {"content": formatted_response}
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        logger.error(f"Gemini API Error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Gemini API Error: {str(e)}"
@@ -347,6 +564,164 @@ async def get_current_db_user(
         logger.warning(f"User record not found in DB for clerk_id: {clerk_id}. Consider syncing.")
         raise HTTPException(status_code=404, detail="User data not found in database.")
     return db_user # Automatically serialized by UserResponse
+
+@app.get("/api/recommendations", tags=["Recommendations"])
+async def get_recommendations(
+    clerk_id: str = Depends(get_current_user_clerk_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate personalized recommendations based on user's coding profiles and statistics.
+    This endpoint provides tailored suggestions for learning paths, practice problems,
+    and career development without requiring user input.
+    """
+    try:
+        # Fetch user data from database
+        db_user = db.query(DBUser).filter(DBUser.clerk_id == clerk_id).first()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user's platform usernames and other relevant data
+        user_data = {
+            "username": db_user.username or "user",
+            "leetcode_username": db_user.leetcode_username,
+            "github_username": db_user.github_username,
+            "codechef_username": db_user.codechef_username,
+            "codeforces_username": db_user.codeforces_username,
+        }
+        
+        # Get user's coding profiles for more detailed data
+        if hasattr(db_user, 'coding_profiles') and db_user.coding_profiles:
+            platform_stats = {}
+            for profile in db_user.coding_profiles:
+                if profile.platform == "leetcode":
+                    platform_stats["leetcode"] = {
+                        "total_solved": profile.total_problems_solved,
+                        "easy_solved": profile.easy_solved,
+                        "medium_solved": profile.medium_solved,
+                        "hard_solved": profile.hard_solved
+                    }
+                elif profile.platform == "github":
+                    platform_stats["github"] = {
+                        "total_contributions": profile.total_contributions,
+                        "languages": profile.languages
+                    }
+                elif profile.platform == "codechef":
+                    platform_stats["codechef"] = {
+                        "rating": profile.current_rating,
+                        "stars": profile.stars
+                    }
+                elif profile.platform == "codeforces":
+                    platform_stats["codeforces"] = {
+                        "rating": profile.codeforces_rating,
+                        "problems_solved": profile.problems_solved_count
+                    }
+            user_data["platform_stats"] = platform_stats
+        
+        # Build personalized prompt for recommendations
+        personalized_context = f"""
+        Generate personalized coding recommendations for {user_data['username']}, who has the following coding profiles:
+        """
+        
+        has_profiles = False
+        
+        if user_data.get("leetcode_username"):
+            has_profiles = True
+            personalized_context += f"\n- LeetCode: {user_data['leetcode_username']}"
+            if "platform_stats" in user_data and "leetcode" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["leetcode"]
+                personalized_context += f" (Solved: {stats.get('total_solved', 'N/A')} problems, " + \
+                                       f"Easy: {stats.get('easy_solved', 'N/A')}, " + \
+                                       f"Medium: {stats.get('medium_solved', 'N/A')}, " + \
+                                       f"Hard: {stats.get('hard_solved', 'N/A')})"
+        
+        if user_data.get("github_username"):
+            has_profiles = True
+            personalized_context += f"\n- GitHub: {user_data['github_username']}"
+            if "platform_stats" in user_data and "github" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["github"]
+                personalized_context += f" (Contributions: {stats.get('total_contributions', 'N/A')})"
+                if stats.get("languages"):
+                    top_languages = ", ".join([f"{lang}" for lang, _ in list(stats.get("languages", {}).items())[:3]])
+                    personalized_context += f"\n  Top languages: {top_languages}"
+        
+        if user_data.get("codechef_username"):
+            has_profiles = True
+            personalized_context += f"\n- CodeChef: {user_data['codechef_username']}"
+            if "platform_stats" in user_data and "codechef" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["codechef"]
+                personalized_context += f" (Rating: {stats.get('rating', 'N/A')}, Stars: {stats.get('stars', 'N/A')})"
+        
+        if user_data.get("codeforces_username"):
+            has_profiles = True
+            personalized_context += f"\n- Codeforces: {user_data['codeforces_username']}"
+            if "platform_stats" in user_data and "codeforces" in user_data["platform_stats"]:
+                stats = user_data["platform_stats"]["codeforces"]
+                personalized_context += f" (Rating: {stats.get('rating', 'N/A')})"
+        
+        if not has_profiles:
+            personalized_context += "\n- No coding profiles linked yet"
+            
+        personalized_context += f"""
+        
+        
+        Please provide well-spaced, personalized recommendations for {user_data['username']} in these categories:
+        
+        
+        SKILL DEVELOPMENT:
+        
+        Based on their profiles, suggest 2-3 specific skills or topics they should focus on next. Present each suggestion as a separate paragraph with proper spacing. Include specific resources they can use to learn each skill (name the book, course, or website).
+        
+        
+        PRACTICE PROBLEMS:
+        
+        Suggest 3-5 specific LeetCode problems that match their skill level. List each problem on its own line with TWO line breaks between items. Include the full problem name AND problem number (e.g., "Two Sum - Problem 1").
+        
+        
+        LEARNING RESOURCES:
+        
+        Recommend specific books, courses, or tutorials. Present each recommendation as a distinct paragraph with proper spacing. Include full resource name, author, and platform (e.g., "Clean Code by Robert Martin" or "Advanced Python on Coursera by University of Michigan").
+        
+        
+        PROJECT IDEAS:
+        
+        Suggest 2-3 concrete project ideas. Each project suggestion should be in its own paragraph with THREE line breaks between them. Include key technologies to use and enough details that they could start working on it immediately.
+        
+        
+        CAREER ADVICE:
+        
+        Provide practical career advice based on their current skill set. Use TRIPLE line breaks between different pieces of advice. Be specific about next steps and mention any specific resources by name.
+        
+        
+        IMPORTANT FORMATTING: 
+        - Use clear section titles with TWO line breaks after each title
+        - Ensure THREE line breaks between sections
+        - For lists, put each item on its own line with TWO line breaks between items
+        - Include detailed references to resources (names, numbers, authors, platforms) directly in the text
+        - Use bullet points (•) for unordered lists with proper spacing
+        - Keep your language conversational and friendly
+        - Maintain ample white space throughout the entire response
+        """
+        
+        logger.info(f"Generating personalized recommendations for {user_data['username']}")
+        response = model.generate_content(personalized_context)
+        
+        # Format the response to remove markdown symbols at the beginning of lines
+        formatted_response = format_ai_response(response.text)
+        
+        return {
+            "username": user_data['username'],
+            "recommendations": formatted_response,
+            "generated_at": datetime.now().isoformat()
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error generating recommendations: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate recommendations: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
