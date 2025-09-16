@@ -17,9 +17,10 @@ from fastapi.responses import JSONResponse
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from datetime import datetime, timezone
 
 from database import engine, SessionLocal, get_db
-from models import Base, User as DBUser
+from models import Base, User as DBUser, ChatHistory
 from schemas import UserResponse, UserUpdate
 from auth import get_current_user_clerk_id, get_current_user
 from routes.platform_routes import router as platform_router
@@ -94,6 +95,16 @@ class UserAnalysisOut(BaseModel):
     username: str
     email: str
     profiles: List[CodingProfileOut]
+
+class ChatMessage(BaseModel):
+    id: int
+    user_message: str
+    ai_response: str
+    created_at: str
+    session_id: str | None = None
+
+class ChatHistoryResponse(BaseModel):
+    messages: List[ChatMessage]
 
 def extract_text(pdf_bytes: bytes) -> str:
     try:
@@ -319,6 +330,19 @@ async def chat_endpoint(
                     }
             user_data["platform_stats"] = platform_stats
         
+        # Get recent chat history (last 10 messages for context)
+        recent_history = db.query(ChatHistory).filter(
+            ChatHistory.clerk_id == clerk_id
+        ).order_by(ChatHistory.created_at.desc()).limit(10).all()
+        
+        # Build conversation context
+        conversation_context = ""
+        if recent_history:
+            conversation_context = "\n\nRECENT CONVERSATION HISTORY:\n"
+            for msg in reversed(recent_history[-5:]):  # Last 5 messages for context
+                conversation_context += f"User: {msg.user_message}\n"
+                conversation_context += f"Assistant: {msg.ai_response}\n\n"
+        
         # Build personalized prompt
         personalized_context = f"""
         I'm helping {user_data['username']} with their coding journey. Here's what I know about them:
@@ -377,14 +401,43 @@ async def chat_endpoint(
         - I'll maintain ample white space throughout the entire response
         """
         
-        # Combine personalized context with user query
-        enhanced_prompt = f"{personalized_context}\n\nQuery: {message.content}"
+        # Combine personalized context with conversation history and user query
+        enhanced_prompt = f"{personalized_context}{conversation_context}\n\nCurrent Query: {message.content}"
         
         logger.info(f"Enhanced prompt with user data for {user_data['username']}")
         response = model.generate_content(enhanced_prompt)
         
         # Format the response to remove markdown symbols at the beginning of lines
         formatted_response = format_ai_response(response.text)
+        
+        # Generate session ID (use current timestamp if no recent session)
+        session_id = None
+        if recent_history:
+            # Check if the last message was within 1 hour
+            last_message_time = recent_history[0].created_at
+            time_diff = datetime.now(timezone.utc) - last_message_time
+            if time_diff.total_seconds() < 3600:  # 1 hour
+                session_id = recent_history[0].session_id or f"session_{int(last_message_time.timestamp())}"
+            else:
+                session_id = f"session_{int(datetime.now(timezone.utc).timestamp())}"
+        else:
+            session_id = f"session_{int(datetime.now(timezone.utc).timestamp())}"
+
+        # Save the conversation to database
+        try:
+            chat_record = ChatHistory(
+                clerk_id=clerk_id,
+                user_message=message.content,
+                ai_response=formatted_response,
+                session_id=session_id
+            )
+            db.add(chat_record)
+            db.commit()
+            logger.info(f"Saved chat history for user {user_data['username']} with session {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to save chat history: {str(e)}")
+            # Don't fail the request if saving history fails
+            db.rollback()
         
         return {"content": formatted_response}
     except HTTPException as e:
@@ -395,8 +448,39 @@ async def chat_endpoint(
             status_code=500,
             detail=f"Gemini API Error: {str(e)}"
         )
-    
 
+@app.get("/api/chat/history", response_model=ChatHistoryResponse, tags=["Chat"])
+async def get_chat_history(
+    clerk_id: str = Depends(get_current_user_clerk_id),
+    db: Session = Depends(get_db),
+    limit: int = 50
+):
+    """Get chat history for the current user"""
+    try:
+        # Fetch chat history for the user, ordered by most recent first
+        chat_messages = db.query(ChatHistory).filter(
+            ChatHistory.clerk_id == clerk_id
+        ).order_by(ChatHistory.created_at.desc()).limit(limit).all()
+        
+        # Convert to response format
+        messages = []
+        for msg in reversed(chat_messages):  # Reverse to get chronological order
+            messages.append(ChatMessage(
+                id=msg.id,
+                user_message=msg.user_message,
+                ai_response=msg.ai_response,
+                created_at=msg.created_at.isoformat(),
+                session_id=msg.session_id
+            ))
+        
+        return ChatHistoryResponse(messages=messages)
+        
+    except Exception as e:
+        logger.error(f"Error fetching chat history: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch chat history: {str(e)}"
+        )
 
 def get_db():
     db = SessionLocal()

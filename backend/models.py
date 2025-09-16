@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, JSON, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, JSON, UniqueConstraint, Index, Text
 from sqlalchemy.orm import relationship, deferred
 from sqlalchemy.ext.declarative import declarative_base
 from database import Base
@@ -173,3 +173,57 @@ class CodingProfile(Base):
     @property
     def is_github(self):
         return self.platform.lower() == "github"
+
+class ChatHistory(Base):
+    __tablename__ = "chat_history"
+    
+    id = Column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+        comment="Unique chat message ID"
+    )
+    
+    clerk_id = Column(
+        String(255),
+        ForeignKey("users.clerk_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="User who sent the message"
+    )
+    
+    user_message = Column(
+        Text,
+        nullable=False,
+        comment="The user's message"
+    )
+    
+    ai_response = Column(
+        Text,
+        nullable=False,
+        comment="The AI's response"
+    )
+    
+    session_id = Column(
+        String(255),
+        nullable=True,
+        index=True,
+        comment="Session ID to group related messages"
+    )
+    
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+        comment="When the message was sent"
+    )
+    
+    # Relationships
+    user = relationship("User")
+    
+    # Indexes for efficient querying
+    __table_args__ = (
+        Index('idx_clerk_created', 'clerk_id', 'created_at'),
+        Index('idx_created_at', 'created_at'),
+    )
