@@ -64,7 +64,10 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4 h-screen flex flex-col">
+    <div
+      className="max-w-4xl mx-auto p-4 flex flex-col"
+      style={{ height: "calc(100vh - 200px)", backgroundColor: "#f8fafc" }}
+    >
       <div className="flex-1 overflow-y-auto mb-4 space-y-4">
         {messages.map((msg, i) => (
           <Message key={i} content={msg.content} isBot={msg.isBot} />

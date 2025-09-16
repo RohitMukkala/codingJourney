@@ -153,7 +153,7 @@ const Settings = () => {
   };
 
   return (
-    <div className="settings-container">
+    <div className="settings-container" style={{ backgroundColor: "#f8fafc" }}>
       <div className="settings-content">
         <div className="settings-form">
           <h2>Profile Settings</h2>

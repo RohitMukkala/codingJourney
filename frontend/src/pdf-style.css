@@ -1,0 +1,32 @@
+/* src/pdf-styles.css */
+
+/*
+  This class will be added temporarily during PDF capture.
+  The '!important' flag is necessary to override Tailwind's utility classes.
+*/
+
+/* Gradient fallback: Use a solid light blue */
+.pdf-capture .from-blue-50.to-blue-200 {
+  background: #f0f8ff !important;
+}
+
+/* Card background fallback */
+.pdf-capture .bg-blue-50 {
+  background-color: #eff6ff !important;
+}
+
+/* Text color fallbacks */
+.pdf-capture .text-blue-900 {
+  color: #1e3a8a !important;
+}
+.pdf-capture .text-blue-800 {
+  color: #1e40af !important;
+}
+
+/* Button color fallbacks */
+.pdf-capture .bg-blue-700 {
+  background-color: #1d4ed8 !important;
+}
+.pdf-capture .bg-green-600 {
+  background-color: #16a34a !important;
+}

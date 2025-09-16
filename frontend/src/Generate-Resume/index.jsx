@@ -5,7 +5,10 @@ function GenerateResume() {
   const navigate = useNavigate();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen text-center px-4">
+    <div
+      className="flex flex-col items-center justify-center min-h-screen text-center px-4"
+      style={{ backgroundColor: "#f8fafc" }}
+    >
       <div className="max-w-3xl space-y-6">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
           Craft Your Professional Resume

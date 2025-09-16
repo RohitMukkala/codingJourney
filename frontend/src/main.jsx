@@ -19,6 +19,7 @@ import ResumeAnalyzer from "./ResumeAnalyzer/ResumeAnalyzer";
 import ChatInterface from "./ChatInterface";
 import AuthProvider from "@/context/AuthContext";
 import Settings from "./settings";
+import AnalysisPage from "./AnalysisPage";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -34,6 +35,10 @@ const router = createBrowserRouter([
       {
         path: "/dashboard",
         element: <Dashboard />,
+      },
+      {
+        path: "/analysis",
+        element: <AnalysisPage />, // ✅ Add this here
       },
       {
         path: "/generate-resume",

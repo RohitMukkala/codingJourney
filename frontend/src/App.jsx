@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, Route } from "react-router-dom";
 import Header from "@/components/custom/header";
 import { LoaderCircle } from "lucide-react";
 import Sidebar from "@/components/custom/Sidebar";
@@ -26,7 +26,10 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ backgroundColor: "#f8fafc" }}
+    >
       <Header onMenuClick={toggleSidebar} />
       <div className="flex flex-1">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -36,7 +39,7 @@ function App() {
       </div>
       <footer className="border-t py-4 mt-8 print:hidden">
         <div className="container text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Resume Builder. All rights reserved.
+          © {new Date().getFullYear()} CodeNexus AI. All rights reserved.
         </div>
       </footer>
     </div>

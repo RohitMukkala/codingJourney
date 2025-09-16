@@ -6,13 +6,14 @@ import logging
 import requests
 import fitz
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import re
 
 from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -77,6 +78,22 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 class AnalysisResponse(BaseModel):
     analysis: str
+
+class CodingProfileOut(BaseModel):
+    platform: str
+    total_solved: int = 0
+    easy_solved: int = 0
+    medium_solved: int = 0
+    hard_solved: int = 0
+    current_rating: int = 0
+    stars: int = 0
+    languages: Dict[str, float] = {}
+    # Add more fields as needed
+
+class UserAnalysisOut(BaseModel):
+    username: str
+    email: str
+    profiles: List[CodingProfileOut]
 
 def extract_text(pdf_bytes: bytes) -> str:
     try:
@@ -564,6 +581,32 @@ async def get_current_db_user(
         logger.warning(f"User record not found in DB for clerk_id: {clerk_id}. Consider syncing.")
         raise HTTPException(status_code=404, detail="User data not found in database.")
     return db_user # Automatically serialized by UserResponse
+
+@app.get("/api/analysis-data", response_model=UserAnalysisOut, tags=["Analysis"])
+async def get_analysis_data(
+    clerk_id: str = Depends(get_current_user_clerk_id),
+    db: Session = Depends(get_db)
+):
+    db_user = db.query(DBUser).filter(DBUser.clerk_id == clerk_id).first()
+    if not db_user:
+        raise HTTPException(404, "User not found")
+    profiles = []
+    for p in db_user.coding_profiles:
+        profiles.append(CodingProfileOut(
+            platform=p.platform,
+            total_solved=p.total_problems_solved or 0,
+            easy_solved=p.easy_solved or 0,
+            medium_solved=p.medium_solved or 0,
+            hard_solved=p.hard_solved or 0,
+            current_rating=p.current_rating or 0,
+            stars=p.stars or 0,
+            languages=p.languages or {},
+        ))
+    return UserAnalysisOut(
+        username=db_user.username,
+        email=db_user.email,
+        profiles=profiles
+    )
 
 @app.get("/api/recommendations", tags=["Recommendations"])
 async def get_recommendations(

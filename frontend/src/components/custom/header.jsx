@@ -8,11 +8,14 @@ function Header({ onMenuClick }) {
   const { user, isSignedIn } = useUser();
 
   return (
-    <div className="p-3 px-5 flex justify-between items-center shadow-md relative z-[60] bg-white">
+    <div
+      className="p-3 px-5 flex justify-between items-center shadow-md relative z-[60] text-white"
+      style={{ backgroundColor: "#111827" }}
+    >
       <div className="flex items-center gap-4">
         {isSignedIn && (
           <button
-            className="block text-gray-700 hover:text-black focus:outline-none"
+            className="block text-white hover:text-gray-300 focus:outline-none"
             onClick={onMenuClick}
           >
             <Menu className="w-6 h-6" />
@@ -32,7 +35,8 @@ function Header({ onMenuClick }) {
       {isSignedIn ? (
         <div className="flex gap-2 items-center">
           <Link to={"/dashboard"}>
-            <Button variant="outline">Dashboard</Button>
+            {/* This is the changed line */}
+            <Button variant="ghost">Dashboard</Button>
           </Link>
           <UserButton />
         </div>
