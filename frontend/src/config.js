@@ -15,6 +15,11 @@ export const API_URL =
     ? "http://localhost:8000"
     : "https://codingjourney.onrender.com");
 
+// Clerk API URL for frontend
+export const CLERK_API_URL = window.location.hostname.endsWith("codenexusai.me")
+  ? "https://clerk.codenexusai.me"
+  : "https://clerk.dev";
+
 // Timeouts
 export const TIMEOUT = {
   default: isDevelopment ? 30000 : 10000, // 30s local, 10s production
@@ -37,4 +42,5 @@ export default {
   isDevelopment,
   TIMEOUT,
   apiUrl,
+  CLERK_API_URL,
 };

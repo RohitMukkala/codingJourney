@@ -44,7 +44,7 @@ def read_root():
     return {"message": "Hello from FastAPI on Render!"}
 
 # CORS Configuration
-allowed_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,https://coding-journey-9rlm.vercel.app").split(",")
+allowed_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,https://coding-journey-9rlm.vercel.app,https://codenexusai.me,https://www.codenexusai.me").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

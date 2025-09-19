@@ -17,9 +17,14 @@
         if (isDev) {
           // For local development, use localhost:8000
           window.API_URL = "http://localhost:8000";
+          window.CLERK_API_URL = "https://clerk.dev";
+        } else if (window.location.hostname.includes("codenexusai.me")) {
+          window.API_URL = "https://codingjourney.onrender.com";
+          window.CLERK_API_URL = "https://clerk.codenexusai.me";
         } else if (window.location.hostname.includes("vercel.app")) {
           // In production on Vercel, use the Render backend
           window.API_URL = "https://codingjourney.onrender.com";
+          window.CLERK_API_URL = "https://clerk.dev";
         }
 
         // Log the detected environment
