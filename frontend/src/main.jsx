@@ -9,6 +9,7 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import "./index.css";
 import App from "./App.jsx";
 import SignInPage from "./auth/sign-in";
+import SignUpPage from "./auth/sign-up"; // ✅ NEW
 import Home from "./home/index.jsx";
 import Dashboard from "./dashboard/index.jsx";
 import GenerateResume from "./Generate-Resume";
@@ -73,6 +74,10 @@ const router = createBrowserRouter([
   {
     path: "/auth/sign-in",
     element: <SignInPage />,
+  },
+  {
+    path: "/auth/sign-up",
+    element: <SignUpPage />,
   },
   // Root-level catch-all
   {
