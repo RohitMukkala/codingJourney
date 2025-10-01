@@ -333,7 +333,7 @@ We welcome contributions! Please follow these steps:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL v3 License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -355,4 +355,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 [![Portfolio](https://img.shields.io/badge/Portfolio-Visit-green?style=for-the-badge&logo=portfolio)](https://portfolio3-taupe-nine.vercel.app/)
 
 </div>
+
 
